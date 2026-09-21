@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Food Tracker</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%F0%9F%8D%BD%EF%B8%8F%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1a1d21; --muted: #6b7280; --line: #e5e7eb;
+    --accent: #2563eb; --accent-soft: #dbeafe; --danger: #dc2626; --ok: #16a34a;
+    --kcal: #f59e0b; --protein: #ef4444; --carbs: #3b82f6; --fat: #8b5cf6;
+    --radius: 12px; --shadow: 0 1px 2px rgba(0,0,0,.04), 0 2px 8px rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0f1115; --card: #181b21; --text: #e8eaed; --muted: #9aa0a6; --line: #2a2f38;
+            --accent: #60a5fa; --accent-soft: #1e3a5f; --shadow: none; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: -.01em; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+  .datenav { display: flex; align-items: center; gap: 6px; }
+  .datenav input[type=date] { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text); }
+  button { font: inherit; cursor: pointer; border: 1px solid var(--line); background: var(--card); color: var(--text);
+           padding: 7px 12px; border-radius: 8px; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.primary:disabled { opacity: .6; cursor: wait; }
+  button.icon { padding: 4px 8px; line-height: 1; border: none; background: transparent; color: var(--muted); font-size: 18px; }
+  button.icon:hover { color: var(--danger); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; box-shadow: var(--shadow); }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 12px; font-weight: 600; }
+  form.log { display: flex; gap: 8px; }
+  form.log input { flex: 1; font: inherit; font-size: 16px; padding: 11px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--text); }
+  form.log input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  .hint { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+  .hint code { background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+  .flash { margin-top: 10px; font-size: 14px; }
+  .flash.ok { color: var(--ok); } .flash.err { color: var(--danger); }
+  .totals { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  @media (max-width: 520px) { .totals { grid-template-columns: repeat(2, 1fr); } }
+  .stat { padding: 12px; border-radius: 10px; background: var(--bg); }
+  .stat .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .stat .value { font-size: 22px; font-weight: 700; margin: 2px 0; font-variant-numeric: tabular-nums; }
+  .stat .value small { font-size: 12px; color: var(--muted); font-weight: 500; }
+  .bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; margin-top: 6px; }
+  .bar i { display: block; height: 100%; width: 0; border-radius: 3px; transition: width .35s ease; }
+  .stat.over .bar i { background: var(--danger) !important; }
+  .stat .goal { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .goals-edit { display: none; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 12px; }
+  .goals-edit.open { display: grid; }
+  .goals-edit label { font-size: 12px; color: var(--muted); display: block; }
+  .goals-edit input { width: 100%; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); }
+  .row-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .row-head h2 { margin: 0; }
+  .link { background: none; border: none; color: var(--accent); padding: 0; font-size: 13px; }
+  ul.entries { list-style: none; margin: 0; padding: 0; }
+  ul.entries li { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+  ul.entries li:first-child { border-top: none; padding-top: 0; }
+  .desc { font-weight: 600; }
+  .meta { font-size: 13px; color: var(--muted); }
+  .meta .grams { cursor: pointer; border-bottom: 1px dashed var(--muted); }
+  .meta .grams:hover { color: var(--accent); border-color: var(--accent); }
+  .meta input { width: 70px; font: inherit; font-size: 13px; padding: 2px 4px; border: 1px solid var(--accent); border-radius: 4px; background: var(--bg); color: var(--text); }
+  .badge { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); margin-left: 6px; vertical-align: middle; }
+  .badge.claude { background: #fef3c7; color: #92400e; } .badge.custom, .badge.manual-form { background: #dcfce7; color: #166534; }
+  @media (prefers-color-scheme: dark) { .badge.claude { background: #3b2f0a; color: #fbbf24; } .badge.custom, .badge.manual-form { background: #0f3b22; color: #4ade80; } }
+  .macros { display: flex; gap: 10px; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .macros b { font-weight: 700; }
+  .macros .k { color: var(--kcal); } .macros .p { color: var(--protein); } .macros .c { color: var(--carbs); } .macros .f { color: var(--fat); }
+  @media (max-width: 520px) { ul.entries li { grid-template-columns: 1fr auto; } .macros { grid-column: 1 / -1; order: 3; } .del { order: 2; } }
+  .empty { color: var(--muted); text-align: center; padding: 20px 0; }
+  .unmatched { border-color: var(--kcal); }
+  .unmatched .item { padding: 10px 0; border-top: 1px solid var(--line); }
+  .unmatched .item:first-of-type { border-top: none; }
+  .manual-form { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr auto; gap: 6px; margin-top: 8px; align-items: end; }
+  .manual-form label { font-size: 11px; color: var(--muted); display: block; }
+  .manual-form input { width: 100%; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); }
+  .manual-form .remember { grid-column: 1 / -1; font-size: 13px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+  @media (max-width: 640px) { .manual-form { grid-template-columns: repeat(3, 1fr); } .manual .name { grid-column: 1 / -1; } }
+  .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+  .day { text-align: center; font-size: 12px; color: var(--muted); cursor: pointer; }
+  .day .col { height: 60px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 4px; }
+  .day .col i { display: block; width: 60%; background: var(--kcal); border-radius: 4px 4px 0 0; min-height: 2px; opacity: .8; }
+  .day.today { color: var(--text); font-weight: 600; }
+  .day.today .col i { background: var(--accent); }
+  .day .kc { font-variant-numeric: tabular-nums; }
+  footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 24px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>🍽️ Food Tracker</h1>
+    <div class="datenav">
+      <button id="prev" title="Previous day">‹</button>
+      <input type="date" id="date">
+      <button id="next" title="Next day">›</button>
+      <button id="today">Today</button>
+    </div>
+  </header>
+
+  <section class="card">
+    <h2>What did you eat?</h2>
+    <form class="log" id="logform" autocomplete="off">
+      <input id="text" placeholder="e.g. 2 eggs, 2 slices of toast and a banana" list="foodlist" required>
+      <datalist id="foodlist"></datalist>
+      <button class="primary" id="add" type="submit">Add</button>
+    </form>
+    <p class="hint">Separate items with commas or "and". Amounts like <code>150g</code>, <code>1 cup</code>, <code>2 slices</code>, <code>half an avocado</code> all work. No amount = one typical serving.</p>
+    <div class="flash" id="flash"></div>
+  </section>
+
+  <section class="card unmatched" id="unmatched" hidden>
+    <h2>Couldn't find these — add them manually</h2>
+    <div id="unmatched-list"></div>
+  </section>
+
+  <section class="card">
+    <div class="row-head"><h2>Today's totals</h2><button class="link" id="editgoals">Edit goals</button></div>
+    <div class="totals" id="totals"></div>
+    <form class="goals-edit" id="goalsform">
+      <div><label>Calories</label><input name="kcal" type="number" min="0" step="10"></div>
+      <div><label>Protein (g)</label><input name="protein" type="number" min="0" step="5"></div>
+      <div><label>Carbs (g)</label><input name="carbs" type="number" min="0" step="5"></div>
+      <div><label>Fat (g)</label><input name="fat" type="number" min="0" step="5"></div>
+      <div style="grid-column: 1 / -1; display:flex; gap:8px; justify-content:flex-end">
+        <button type="button" id="cancelgoals">Cancel</button><button class="primary" type="submit">Save goals</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Log</h2>
+    <ul class="entries" id="entries"></ul>
+  </section>
+
+  <section class="card">
+    <h2>Last 7 days · calories</h2>
+    <div class="week" id="week"></div>
+  </section>
+
+  <footer id="status"></footer>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const state = { date: localISO(new Date()), day: null };
+const MACROS = [
+  ["kcal", "Calories", "", "var(--kcal)"],
+  ["protein", "Protein", "g", "var(--protein)"],
+  ["carbs", "Carbs", "g", "var(--carbs)"],
+  ["fat", "Fat", "g", "var(--fat)"],
+];
+
+function localISO(d) {
+  const off = d.getTimezoneOffset();
+  return new Date(d.getTime() - off * 60000).toISOString().slice(0, 10);
+}
+function shiftDate(days) {
+  const d = new Date(state.date + "T12:00:00");
+  d.setDate(d.getDate() + days);
+  return localISO(d);
+}
+function fmt(n, dp = 0) { return Number(n || 0).toFixed(dp); }
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
+  if (!res.ok) {
+    let msg = res.statusText;
+    try { const j = await res.json(); msg = j.detail?.[0]?.msg || j.detail || msg; } catch {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+function flash(msg, cls = "ok") { const f = $("#flash"); f.textContent = msg; f.className = "flash " + cls; }
+
+// ---- rendering -----------------------------------------------------------
+function renderDay(day) {
+  state.day = day;
+  $("#date").value = day.date;
+  const isToday = day.date === localISO(new Date());
+  document.querySelector(".row-head h2").textContent = isToday ? "Today's totals" : `Totals for ${day.date}`;
+
+  $("#totals").innerHTML = MACROS.map(([k, label, unit, color]) => {
+    const v = day.totals[k], g = day.goals[k] || 0, pct = g ? Math.min(100, v / g * 100) : 0;
+    return `<div class="stat ${g && v > g ? "over" : ""}">
+      <div class="label">${label}</div>
+      <div class="value">${fmt(v)}<small>${unit}</small></div>
+      <div class="bar"><i style="width:${pct}%;background:${color}"></i></div>
+      <div class="goal">${g ? `${fmt(Math.max(0, g - v))}${unit} left of ${fmt(g)}` : "no goal"}</div>
+    </div>`;
+  }).join("");
+
+  const ul = $("#entries");
+  if (!day.entries.length) {
+    ul.innerHTML = `<li class="empty">Nothing logged yet. Type what you ate above.</li>`;
+  } else {
+    ul.innerHTML = day.entries.map((e) => `
+      <li data-id="${e.id}">
+        <div>
+          <div class="desc">${esc(e.description)}${e.source && e.source !== "database" ? `<span class="badge ${e.source}">${e.source}</span>` : ""}</div>
+          <div class="meta">${e.food_name && e.food_name !== e.description.toLowerCase() ? esc(e.food_name) + " · " : ""}<span class="grams" title="Click to change amount">${fmt(e.grams)} g</span></div>
+        </div>
+        <div class="macros"><span class="k"><b>${fmt(e.kcal)}</b> kcal</span><span class="p"><b>${fmt(e.protein)}</b>P</span><span class="c"><b>${fmt(e.carbs)}</b>C</span><span class="f"><b>${fmt(e.fat)}</b>F</span></div>
+        <button class="icon del" title="Delete">×</button>
+      </li>`).join("");
+  }
+  ul.querySelectorAll(".del").forEach((b) => b.onclick = () => deleteEntry(b.closest("li").dataset.id));
+  ul.querySelectorAll(".grams").forEach((s) => s.onclick = () => editGrams(s));
+}
+
+function renderWeek(h) {
+  const max = Math.max(h.goals.kcal || 0, ...h.days.map((d) => d.kcal), 1);
+  $("#week").innerHTML = h.days.map((d) => {
+    const dt = new Date(d.date + "T12:00:00");
+    return `<div class="day ${d.date === state.date ? "today" : ""}" data-date="${d.date}">
+      <div class="col"><i style="height:${Math.round(d.kcal / max * 100)}%"></i></div>
+      <div>${dt.toLocaleDateString(undefined, { weekday: "short" })}</div>
+      <div class="kc">${d.kcal ? fmt(d.kcal) : "–"}</div></div>`;
+  }).join("");
+  $("#week").querySelectorAll(".day").forEach((el) => el.onclick = () => load(el.dataset.date));
+}
+
+function renderUnmatched(items) {
+  const box = $("#unmatched"), list = $("#unmatched-list");
+  if (!items.length) { box.hidden = true; list.innerHTML = ""; return; }
+  box.hidden = false;
+  list.innerHTML = items.map((u, i) => `
+    <div class="item">
+      <div><b>${esc(u.input)}</b> <span class="meta">— enter the nutrition for the amount you ate</span></div>
+      <form class="manual-form" data-i="${i}">
+        <div class="name"><label>Name</label><input name="name" value="${esc(u.food_text || u.input)}" required></div>
+        <div><label>Grams</label><input name="grams" type="number" min="1" step="1" placeholder="100"></div>
+        <div><label>kcal</label><input name="kcal" type="number" min="0" step="1" required></div>
+        <div><label>Protein</label><input name="protein" type="number" min="0" step="0.1" value="0"></div>
+        <div><label>Carbs</label><input name="carbs" type="number" min="0" step="0.1" value="0"></div>
+        <div><label>Fat</label><input name="fat" type="number" min="0" step="0.1" value="0"></div>
+        <div><button class="primary" type="submit">Add</button></div>
+        <label class="remember"><input type="checkbox" name="remember" checked> Remember this food so it's recognised next time</label>
+      </form>
+    </div>`).join("");
+  list.querySelectorAll("form.manual-form").forEach((f) => f.onsubmit = async (ev) => {
+    ev.preventDefault();
+    const fd = new FormData(f);
+    const body = Object.fromEntries(fd.entries());
+    body.remember = fd.get("remember") === "on";
+    body.grams = body.grams ? Number(body.grams) : null;
+    for (const k of ["kcal", "protein", "carbs", "fat"]) body[k] = Number(body[k] || 0);
+    body.date = state.date;
+    try {
+      const res = await api("/api/entries/manual", { method: "POST", body: JSON.stringify(body) });
+      renderDay(res); refreshWeek();
+      f.closest(".item").remove();
+      if (!list.children.length) $("#unmatched").hidden = true;
+      flash(`Added ${body.name}.`);
+    } catch (e) { flash(e.message, "err"); }
+  });
+}
+
+// ---- actions -------------------------------------------------------------
+async function load(date) {
+  state.date = date;
+  try { renderDay(await api(`/api/day?date=${date}`)); refreshWeek(); }
+  catch (e) { flash(e.message, "err"); }
+}
+async function refreshWeek() {
+  try { renderWeek(await api(`/api/history?days=7&end=${state.date}`)); } catch {}
+}
+
+$("#logform").onsubmit = async (ev) => {
+  ev.preventDefault();
+  const text = $("#text").value.trim();
+  if (!text) return;
+  const btn = $("#add"); btn.disabled = true; btn.textContent = "Adding…";
+  flash("");
+  try {
+    const res = await api("/api/log", { method: "POST", body: JSON.stringify({ text, date: state.date }) });
+    renderDay(res); refreshWeek(); renderUnmatched(res.unmatched);
+    $("#text").value = "";
+    if (res.added.length) {
+      const kcal = res.added.reduce((s, e) => s + e.kcal, 0);
+      flash(`Added ${res.added.map((e) => `${e.food_name} (${fmt(e.grams)}g)`).join(", ")} · ${fmt(kcal)} kcal`);
+    } else if (!res.unmatched.length) flash("Nothing recognised in that text.", "err");
+  } catch (e) { flash(e.message, "err"); }
+  finally { btn.disabled = false; btn.textContent = "Add"; $("#text").focus(); }
+};
+
+async function deleteEntry(id) {
+  try { renderDay(await api(`/api/entries/${id}`, { method: "DELETE" })); refreshWeek(); }
+  catch (e) { flash(e.message, "err"); }
+}
+
+function editGrams(span) {
+  const li = span.closest("li"), id = li.dataset.id, cur = parseFloat(span.textContent);
+  const input = document.createElement("input");
+  input.type = "number"; input.min = "1"; input.step = "1"; input.value = cur;
+  span.replaceWith(input); input.focus(); input.select();
+  let done = false;
+  const commit = async () => {
+    if (done) return; done = true;
+    const g = parseFloat(input.value);
+    if (!g || g === cur) { renderDay(state.day); return; }
+    try { renderDay(await api(`/api/entries/${id}`, { method: "PATCH", body: JSON.stringify({ grams: g }) })); refreshWeek(); }
+    catch (e) { flash(e.message, "err"); renderDay(state.day); }
+  };
+  input.onblur = commit;
+  input.onkeydown = (e) => { if (e.key === "Enter") input.blur(); if (e.key === "Escape") { done = true; renderDay(state.day); } };
+}
+
+$("#prev").onclick = () => load(shiftDate(-1));
+$("#next").onclick = () => load(shiftDate(1));
+$("#today").onclick = () => load(localISO(new Date()));
+$("#date").onchange = (e) => e.target.value && load(e.target.value);
+
+$("#editgoals").onclick = () => {
+  const f = $("#goalsform");
+  for (const [k] of MACROS) f.elements[k].value = state.day.goals[k];
+  f.classList.toggle("open");
+};
+$("#cancelgoals").onclick = () => $("#goalsform").classList.remove("open");
+$("#goalsform").onsubmit = async (ev) => {
+  ev.preventDefault();
+  const body = {};
+  for (const [k] of MACROS) body[k] = Number(ev.target.elements[k].value);
+  try {
+    const goals = await api("/api/goals", { method: "PUT", body: JSON.stringify(body) });
+    renderDay({ ...state.day, goals }); refreshWeek();
+    ev.target.classList.remove("open");
+  } catch (e) { flash(e.message, "err"); }
+};
+
+// food name suggestions while typing (last item after a comma/and)
+let suggestTimer;
+$("#text").oninput = () => {
+  clearTimeout(suggestTimer);
+  suggestTimer = setTimeout(async () => {
+    const raw = $("#text").value.split(/,|\band\b|\bwith\b/i).pop().replace(/^[\s\d./½¼¾]+(g|oz|cups?|tbsp|tsp|slices?|pieces?)?\s*(of)?\s*/i, "").trim();
+    if (raw.length < 2) return;
+    try {
+      const foods = await api(`/api/foods?q=${encodeURIComponent(raw)}&limit=8`);
+      const prefix = $("#text").value.slice(0, $("#text").value.length - raw.length);
+      $("#foodlist").innerHTML = foods.map((f) => `<option value="${esc(prefix + f.name)}">${fmt(f.serving_g)}g · ${fmt(f.kcal)} kcal</option>`).join("");
+    } catch {}
+  }, 150);
+};
+
+(async () => {
+  await load(state.date);
+  try {
+    const s = await api("/api/status");
+    $("#status").textContent = `${s.foods} foods in the local database · ` +
+      (s.claude_lookup ? `unknown foods are looked up with Claude (${s.model})` : "set ANTHROPIC_API_KEY to look up unknown foods with Claude");
+  } catch {}
+  $("#text").focus();
+})();
+</script>
+</body>
+</html>
