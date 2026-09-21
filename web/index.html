@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Food Tracker</title>
+<meta name="theme-color" content="#2563eb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Food">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%F0%9F%8D%BD%EF%B8%8F%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1a1d21; --muted: #6b7280; --line: #e5e7eb;
+    --accent: #2563eb; --accent-soft: #dbeafe; --danger: #dc2626; --ok: #16a34a;
+    --kcal: #f59e0b; --protein: #ef4444; --carbs: #3b82f6; --fat: #8b5cf6;
+    --radius: 12px; --shadow: 0 1px 2px rgba(0,0,0,.04), 0 2px 8px rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0f1115; --card: #181b21; --text: #e8eaed; --muted: #9aa0a6; --line: #2a2f38;
+            --accent: #60a5fa; --accent-soft: #1e3a5f; --shadow: none; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: -.01em; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+  .datenav { display: flex; align-items: center; gap: 6px; }
+  .datenav input[type=date] { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text); }
+  button { font: inherit; cursor: pointer; border: 1px solid var(--line); background: var(--card); color: var(--text);
+           padding: 7px 12px; border-radius: 8px; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.primary:disabled { opacity: .6; cursor: wait; }
+  button.icon { padding: 4px 8px; line-height: 1; border: none; background: transparent; color: var(--muted); font-size: 18px; }
+  button.icon:hover { color: var(--danger); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; box-shadow: var(--shadow); }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 12px; font-weight: 600; }
+  form.log { display: flex; gap: 8px; }
+  form.log input { flex: 1; font: inherit; font-size: 16px; padding: 11px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--text); }
+  form.log input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  .hint { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+  .hint code { background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+  .flash { margin-top: 10px; font-size: 14px; }
+  .flash.ok { color: var(--ok); } .flash.err { color: var(--danger); }
+  .totals { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  @media (max-width: 520px) { .totals { grid-template-columns: repeat(2, 1fr); } }
+  .stat { padding: 12px; border-radius: 10px; background: var(--bg); }
+  .stat .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .stat .value { font-size: 22px; font-weight: 700; margin: 2px 0; font-variant-numeric: tabular-nums; }
+  .stat .value small { font-size: 12px; color: var(--muted); font-weight: 500; }
+  .bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; margin-top: 6px; }
+  .bar i { display: block; height: 100%; width: 0; border-radius: 3px; transition: width .35s ease; }
+  .stat.over .bar i { background: var(--danger) !important; }
+  .stat .goal { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .goals-edit { display: none; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 12px; }
+  .goals-edit.open { display: grid; }
+  .goals-edit label { font-size: 12px; color: var(--muted); display: block; }
+  .goals-edit input { width: 100%; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); }
+  .row-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .row-head h2 { margin: 0; }
+  .link { background: none; border: none; color: var(--accent); padding: 0; font-size: 13px; }
+  ul.entries { list-style: none; margin: 0; padding: 0; }
+  ul.entries li { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+  ul.entries li:first-child { border-top: none; padding-top: 0; }
+  .desc { font-weight: 600; }
+  .meta { font-size: 13px; color: var(--muted); }
+  .meta .grams { cursor: pointer; border-bottom: 1px dashed var(--muted); }
+  .meta .grams:hover { color: var(--accent); border-color: var(--accent); }
+  .meta input { width: 70px; font: inherit; font-size: 13px; padding: 2px 4px; border: 1px solid var(--accent); border-radius: 4px; background: var(--bg); color: var(--text); }
+  .badge { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); margin-left: 6px; vertical-align: middle; }
+  .badge.claude { background: #fef3c7; color: #92400e; } .badge.custom, .badge.manual-form { background: #dcfce7; color: #166534; }
+  @media (prefers-color-scheme: dark) { .badge.claude { background: #3b2f0a; color: #fbbf24; } .badge.custom, .badge.manual-form { background: #0f3b22; color: #4ade80; } }
+  .macros { display: flex; gap: 10px; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .macros b { font-weight: 700; }
+  .macros .k { color: var(--kcal); } .macros .p { color: var(--protein); } .macros .c { color: var(--carbs); } .macros .f { color: var(--fat); }
+  @media (max-width: 520px) { ul.entries li { grid-template-columns: 1fr auto; } .macros { grid-column: 1 / -1; order: 3; } .del { order: 2; } }
+  .empty { color: var(--muted); text-align: center; padding: 20px 0; }
+  .unmatched { border-color: var(--kcal); }
+  .unmatched .item { padding: 10px 0; border-top: 1px solid var(--line); }
+  .unmatched .item:first-of-type { border-top: none; }
+  .manual-form { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr auto; gap: 6px; margin-top: 8px; align-items: end; }
+  .manual-form label { font-size: 11px; color: var(--muted); display: block; }
+  .manual-form input { width: 100%; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); }
+  .manual-form .remember { grid-column: 1 / -1; font-size: 13px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+  @media (max-width: 640px) { .manual-form { grid-template-columns: repeat(3, 1fr); } .manual .name { grid-column: 1 / -1; } }
+  .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+  .day { text-align: center; font-size: 12px; color: var(--muted); cursor: pointer; }
+  .day .col { height: 60px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 4px; }
+  .day .col i { display: block; width: 60%; background: var(--kcal); border-radius: 4px 4px 0 0; min-height: 2px; opacity: .8; }
+  .day.today { color: var(--text); font-weight: 600; }
+  .day.today .col i { background: var(--accent); }
+  .day .kc { font-variant-numeric: tabular-nums; }
+  footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 24px; }
+  footer a { color: var(--accent); text-decoration: none; }
+  form.log input { font-size: 16px; } /* stops iOS zooming on focus */
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>🍽️ Food Tracker</h1>
+    <div class="datenav">
+      <button id="prev" title="Previous day">‹</button>
+      <input type="date" id="date">
+      <button id="next" title="Next day">›</button>
+      <button id="today">Today</button>
+    </div>
+  </header>
+
+  <section class="card">
+    <h2>What did you eat?</h2>
+    <form class="log" id="logform" autocomplete="off">
+      <input id="text" placeholder="e.g. 2 eggs, 2 slices of toast and a banana" list="foodlist" required>
+      <datalist id="foodlist"></datalist>
+      <button class="primary" id="add" type="submit">Add</button>
+    </form>
+    <p class="hint">Separate items with commas or "and". Amounts like <code>150g</code>, <code>1 cup</code>, <code>2 slices</code>, <code>half an avocado</code> all work. No amount = one typical serving.</p>
+    <div class="flash" id="flash"></div>
+  </section>
+
+  <section class="card unmatched" id="unmatched" hidden>
+    <h2>Couldn't find these — add them manually</h2>
+    <div id="unmatched-list"></div>
+  </section>
+
+  <section class="card">
+    <div class="row-head"><h2 id="totals-title">Today's totals</h2><button class="link" id="editgoals">Edit goals</button></div>
+    <div class="totals" id="totals"></div>
+    <form class="goals-edit" id="goalsform">
+      <div><label>Calories</label><input name="kcal" type="number" min="0" step="10"></div>
+      <div><label>Protein (g)</label><input name="protein" type="number" min="0" step="5"></div>
+      <div><label>Carbs (g)</label><input name="carbs" type="number" min="0" step="5"></div>
+      <div><label>Fat (g)</label><input name="fat" type="number" min="0" step="5"></div>
+      <div style="grid-column: 1 / -1; display:flex; gap:8px; justify-content:flex-end">
+        <button type="button" id="cancelgoals">Cancel</button><button class="primary" type="submit">Save goals</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Log</h2>
+    <ul class="entries" id="entries"></ul>
+  </section>
+
+  <section class="card">
+    <h2>Last 7 days · calories</h2>
+    <div class="week" id="week"></div>
+  </section>
+
+  <footer><div id="status"></div><div style="margin-top:6px"><a href="#" id="export">Export data</a> · <a href="#" id="import">Import</a><input type="file" id="importfile" accept="application/json" hidden></div></footer>
+</main>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

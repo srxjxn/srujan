@@ -13,7 +13,27 @@ Each item is matched against a built-in database of ~260 common foods (with lots
 converted to grams using per-food serving sizes, and logged with calories, protein, carbs and fat.
 Daily totals are shown against your goals, with a 7-day calorie history.
 
-## Run it
+## Put it on your phone (Vercel)
+
+The `web/` folder is a static version of the app: same parser and food database, ported to
+JavaScript, with your log saved in the browser on the device. No server, no database to set up.
+
+1. Go to https://vercel.com/new and import this repository (branch `claude/food-tracker-macros-ujfjip`,
+   or `main` once merged).
+2. Leave the settings as they are. `vercel.json` tells Vercel to serve the `web/` folder.
+3. Deploy, then open the URL on your phone. In Safari or Chrome use **Share → Add to Home Screen**
+   to get an app icon that opens full-screen.
+
+Or from a terminal: `npx vercel` in the repo root.
+
+Because the data lives in that browser only, use **Export data** in the footer for a backup and
+**Import** to restore it on another device. The Claude fallback for unknown foods is server-side
+only, so the static version asks you for the macros instead (and remembers them).
+
+To pull food database changes through to the web build: `python scripts/build_foods_js.py`.
+JS parser tests: `node --test web/parser.test.mjs`.
+
+## Run the server version locally
 
 ```bash
 pip install -r requirements.txt
@@ -95,4 +115,7 @@ food_tracker/
   static/index.html the front end (no build step)
 run.py              starts the server
 tests/              parser tests
+web/                static build for Vercel (parser.js, store.js, app.js, generated foods.js)
+scripts/build_foods_js.py  regenerates web/foods.js from foods.py
+vercel.json         serves web/ as a static site
 ```
