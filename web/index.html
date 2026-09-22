@@ -100,6 +100,22 @@
   .manual-form input { width: 100%; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); }
   .manual-form .remember { grid-column: 1 / -1; font-size: 13px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
   @media (max-width: 640px) { .manual-form { grid-template-columns: repeat(3, 1fr); } .manual .name { grid-column: 1 / -1; } }
+  .myfoods-form { display: none; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .myfoods-form.open { display: grid; }
+  .myfoods-form label { font-size: 11px; color: var(--muted); display: block; }
+  .myfoods-form input { width: 100%; font: inherit; font-size: 16px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); }
+  .myfoods-form .wide { grid-column: span 2; }
+  .myfoods-form .section { grid-column: 1 / -1; font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .myfoods-form .actions { grid-column: 1 / -1; display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
+  .myfoods-form .preview { margin-right: auto; font-size: 12px; color: var(--muted); }
+  @media (max-width: 520px) { .myfoods-form { grid-template-columns: repeat(2, 1fr); } }
+  ul.foods { list-style: none; margin: 0; padding: 0; }
+  ul.foods li { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+  ul.foods li:first-child { border-top: none; padding-top: 0; }
+  ul.foods .actions { display: flex; gap: 4px; align-items: center; }
+  button.small { padding: 4px 9px; font-size: 13px; }
+  button.small.log { color: var(--accent); border-color: var(--accent-soft); background: var(--accent-soft); }
+  @media (max-width: 520px) { ul.foods li { grid-template-columns: 1fr auto; } ul.foods .macros { grid-column: 1 / -1; order: 3; } }
   .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
   .day { text-align: center; font-size: 12px; color: var(--muted); cursor: pointer; }
   .day .col { height: 60px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 4px; }
@@ -157,6 +173,25 @@
   <section class="card">
     <h2>Log</h2>
     <ul class="entries" id="entries"></ul>
+  </section>
+
+  <section class="card" id="myfoods">
+    <div class="row-head"><h2>My foods</h2><button class="link" id="addfood">+ Add a food</button></div>
+    <p class="hint" style="margin:0 0 8px">Foods you eat often, saved from the nutrition label. Then just type <code>2 scoops whey</code> or <code>1.5 servings of oats</code> and the macros are exact.</p>
+    <ul class="foods" id="foodlist-mine"></ul>
+    <form class="myfoods-form" id="foodform" autocomplete="off">
+      <input type="hidden" name="replaces">
+      <div class="wide"><label>Name</label><input name="name" placeholder="e.g. gold standard whey" required></div>
+      <div class="wide"><label>Also called (comma separated, optional)</label><input name="aliases" placeholder="whey, protein shake"></div>
+      <div><label>One serving is a</label><input name="serving_unit" list="servingunits" placeholder="scoop" value="serving"><datalist id="servingunits"></datalist></div>
+      <div><label>Serving size (g or ml)</label><input name="serving_g" type="number" inputmode="decimal" min="0.1" step="0.1" placeholder="31" required></div>
+      <div class="section">Per serving, straight off the label</div>
+      <div><label>Calories</label><input name="kcal" type="number" inputmode="decimal" min="0" step="1" required></div>
+      <div><label>Protein (g)</label><input name="protein" type="number" inputmode="decimal" min="0" step="0.1" value="0"></div>
+      <div><label>Carbs (g)</label><input name="carbs" type="number" inputmode="decimal" min="0" step="0.1" value="0"></div>
+      <div><label>Fat (g)</label><input name="fat" type="number" inputmode="decimal" min="0" step="0.1" value="0"></div>
+      <div class="actions"><span class="preview" id="foodpreview"></span><button type="button" id="cancelfood">Cancel</button><button class="primary" type="submit">Save food</button></div>
+    </form>
   </section>
 
   <section class="card">

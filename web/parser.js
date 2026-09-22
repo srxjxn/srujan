@@ -25,6 +25,12 @@ export const GENERIC_UNITS = {
   sandwich: null,
 };
 
+// Serving words offered when saving a food from its label. Any GENERIC_UNITS key works;
+// an unknown word still logs fine, it just falls back to "N servings".
+export const SERVING_UNITS = ["serving", "scoop", "bar", "piece", "slice", "cup", "tbsp", "tsp", "packet", "pouch",
+  "container", "bottle", "can", "glass", "bowl", "patty", "square", "stick", "wrap", "roll", "sandwich", "burger",
+  "cone", "jar", "shot", "handful", "link", "nugget"];
+
 const SIZE_MULTIPLIER = { small: 0.75, medium: 1, large: 1.5, half: 0.5, whole: 1, double: 2 };
 
 const UNIT_ALIASES = {
@@ -80,6 +86,31 @@ function toNumber(tok) {
 function normUnit(tok) {
   tok = UNIT_ALIASES[tok] ?? tok;
   return tok in WEIGHT_UNITS || tok in GENERIC_UNITS ? tok : null;
+}
+
+// "Scoops" -> "scoop", "tablespoon" -> "tbsp", "" -> "serving". Unknown words are kept, singular.
+export function normalizeUnitWord(word) {
+  const w = String(word || "").toLowerCase().replace(/[^a-z]/g, "");
+  if (!w) return "serving";
+  for (let cand of [w, singularize(w)]) {
+    cand = UNIT_ALIASES[cand] ?? cand;
+    if (cand in GENERIC_UNITS) return cand;
+    if (cand in WEIGHT_UNITS) return "serving";
+  }
+  return singularize(w);
+}
+
+// Build a food straight off a nutrition label: macros for ONE serving of servingG grams.
+// Stored per 100 g so "2 scoops" and "45g" both come out exact.
+export function foodFromServing({ name, servingG, kcal, protein = 0, carbs = 0, fat = 0, servingUnit = "serving", aliases = [], source = "custom" }) {
+  if (!(servingG > 0)) throw new Error("Serving size must be positive");
+  const k = 100 / servingG, r4 = (x) => Math.round(x * 1e4) / 1e4;
+  const unit = normalizeUnitWord(servingUnit);
+  const clean = String(name).trim().toLowerCase();
+  const seen = new Set([clean]);
+  const cleanAliases = aliases.map((a) => String(a).trim().toLowerCase()).filter((a) => a && !seen.has(a) && seen.add(a));
+  return { name: clean, kcal: r4(kcal * k), protein: r4(protein * k), carbs: r4(carbs * k), fat: r4(fat * k),
+    serving_g: servingG, units: { serving: servingG, [unit]: servingG }, aliases: cleanAliases, source, serving_unit: unit };
 }
 
 export function singularize(tok) {
@@ -214,18 +245,23 @@ function closest(word, candidates, cutoff) {
 
 // ---- index --------------------------------------------------------------------
 export class FoodIndex {
-  constructor(foods = []) {
+  constructor(foods = []) { this.reset(foods); }
+  // Rebuild from scratch. Later foods win on name clashes, so add custom foods last.
+  reset(foods) {
     this.keys = new Map();
     this.protected = [];
-    this._vocab = null;
-    for (const f of foods) this.add(f);
+    for (const f of foods) this._index(f);
+    this._finalize();
   }
-  add(food) {
+  add(food) { this._index(food); this._finalize(); }
+  _index(food) {
     for (const name of [food.name, ...(food.aliases || [])]) {
       const key = normalizePhrase(name);
       if (key) this.keys.set(key, food);
-      if (/\b(and|with|plus)\b/i.test(name)) this.protected.push(name.toLowerCase());
+      if (/\b(and|with|plus)\b/i.test(name) && !this.protected.includes(name.toLowerCase())) this.protected.push(name.toLowerCase());
     }
+  }
+  _finalize() {
     this._sorted = [...this.keys.keys()].sort((a, b) => (b.split(" ").length - a.split(" ").length) || (b.length - a.length));
     this._vocab = null;
   }

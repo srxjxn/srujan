@@ -69,6 +69,33 @@ and (by default) it's remembered as a custom food so the same words are recognis
 cached as custom foods, so each new food costs at most one API call. Set `FOOD_TRACKER_MODEL` to change
 the model (default `claude-opus-5`) or `FOOD_TRACKER_DISABLE_CLAUDE=1` to turn it off.
 
+## My foods (your own labels, logged by the serving)
+
+For the things you eat every week, skip the estimates: save the food once from its nutrition label
+and log it by the serving.
+
+1. Open **My foods → + Add a food**.
+2. Enter the name, what one serving is called (`scoop`, `bar`, `slice`, `cup`... or just `serving`),
+   the serving size in grams or ml, and the calories, protein, carbs and fat **per serving**, straight
+   off the label. Optional "also called" names (`whey, protein shake`) are matched too.
+3. Log it like anything else:
+
+```
+2 scoops whey
+1.5 servings of gold standard whey
+half a scoop of whey
+3 rx bars and 2 eggs
+45g whey            <- weights still work, scaled from the label
+```
+
+Every serving comes out at exactly the label's numbers. The **+1 scoop** button on each saved food logs
+one serving to the selected day. Saved foods win over the built-in database when a name clashes, so
+saving `whey protein` replaces the generic entry with yours. Edit or remove a food from the same list.
+Entries you already logged keep their numbers.
+
+Foods added through the "couldn't find these" form are saved the same way (one serving = the amount you
+entered) and show up in this list, so you can tidy them up later.
+
 ## Editing
 
 - Click the grams on any entry to change the amount; macros rescale.
@@ -88,6 +115,9 @@ All JSON, served by FastAPI (interactive docs at `/docs`).
 | `PATCH` | `/api/entries/{id}` | `{grams}` rescale an entry |
 | `DELETE` | `/api/entries/{id}` | remove an entry |
 | `GET/PUT` | `/api/goals` | daily targets |
+| `GET` | `/api/my-foods` | saved foods with per-serving macros |
+| `POST` | `/api/my-foods` | `{name, serving_unit, serving_g, kcal, protein, carbs, fat, aliases?, replaces?}` save or update a food from its label |
+| `DELETE` | `/api/my-foods/{name}` | remove a saved food |
 | `GET` | `/api/history?days=7` | daily totals |
 | `GET` | `/api/foods?q=` | search the food database |
 
@@ -111,6 +141,7 @@ python -m unittest
 ```
 food_tracker/
   foods.py          built-in food database (per-100 g macros, serving sizes, unit weights, aliases)
+                    and food_from_serving(), which turns a nutrition label into a Food
   parser.py         free-text → (food, grams) items
   db.py             SQLite: entries, custom foods, goals
   claude_lookup.py  optional Claude fallback for unknown foods

@@ -47,6 +47,12 @@ export class Store {
     this.save();
   }
   customFoods() { return this.data.customFoods; }
+  getFood(name) { return this.data.customFoods.find((f) => f.name === name) || null; }
+  deleteFood(name) {
+    const n = this.data.customFoods.length;
+    this.data.customFoods = this.data.customFoods.filter((f) => f.name !== name);
+    this.save(); return this.data.customFoods.length < n;
+  }
 
   goals() { return { ...DEFAULT_GOALS, ...this.data.goals }; }
   setGoals(g) {

@@ -49,6 +49,12 @@ GENERIC_UNITS: dict[str, float | None] = {
     "ring": 84, "sandwich": None,
 }
 
+# Serving words offered when saving a food from its label. Any GENERIC_UNITS key works;
+# an unknown word still logs fine, it just falls back to "N servings".
+SERVING_UNITS = ["serving", "scoop", "bar", "piece", "slice", "cup", "tbsp", "tsp", "packet", "pouch",
+                 "container", "bottle", "can", "glass", "bowl", "patty", "square", "stick", "wrap",
+                 "roll", "sandwich", "burger", "cone", "jar", "shot", "handful", "link", "nugget"]
+
 # Multipliers applied to serving_g when the food has no explicit unit entry.
 SIZE_MULTIPLIER = {"small": 0.75, "medium": 1.0, "large": 1.5, "half": 0.5, "whole": 1.0, "double": 2.0}
 
@@ -116,6 +122,20 @@ def _norm_unit(tok: str) -> str | None:
     if tok in WEIGHT_UNITS or tok in GENERIC_UNITS:
         return tok
     return None
+
+
+def normalize_unit_word(word: str | None) -> str:
+    """'Scoops' -> 'scoop', 'tablespoon' -> 'tbsp', '' -> 'serving'. Unknown words are kept, singular."""
+    w = re.sub(r"[^a-z]", "", (word or "").lower())
+    if not w:
+        return "serving"
+    for cand in (w, singularize(w)):
+        cand = UNIT_ALIASES.get(cand, cand)
+        if cand in GENERIC_UNITS:
+            return cand
+        if cand in WEIGHT_UNITS:          # "g" is a weight, not a serving name
+            return "serving"
+    return singularize(w)
 
 
 # --------------------------------------------------------------------------- #
@@ -279,19 +299,31 @@ def extract_measure(segment: str) -> Measure:
 
 class FoodIndex:
     def __init__(self, foods: list[Food]):
+        self.reset(foods)
+
+    def reset(self, foods: list[Food]) -> None:
+        """Rebuild from scratch. Later foods win on name clashes, so add custom foods last."""
         self.keys: dict[str, Food] = {}
         self.protected: list[str] = []
         for food in foods:
-            self.add(food)
+            self._index(food)
+        self._finalize()
 
     def add(self, food: Food) -> None:
+        self._index(food)
+        self._finalize()
+
+    def _index(self, food: Food) -> None:
         for name in [food.name, *food.aliases]:
             key = normalize_phrase(name)
             if key:
                 self.keys[key] = food
-            if re.search(r"\b(and|with|plus)\b", name, re.I):
+            if re.search(r"\b(and|with|plus)\b", name, re.I) and name.lower() not in self.protected:
                 self.protected.append(name.lower())
+
+    def _finalize(self) -> None:
         self._keys_by_len = sorted(self.keys, key=lambda k: (-len(k.split()), -len(k)))
+        self._vocab_cache = None
 
     def match(self, text: str) -> tuple[Food | None, float]:
         query = normalize_phrase(text)
@@ -326,7 +358,7 @@ class FoodIndex:
         return None, 0.0
 
     def _vocab(self) -> list[str]:
-        if not hasattr(self, "_vocab_cache"):
+        if self._vocab_cache is None:
             v: set[str] = set()
             for k in self.keys:
                 v.update(k.split())

@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { FOODS } from "./foods.js";
-import { FoodIndex, extractMeasure, parseText } from "./parser.js";
+import { FoodIndex, extractMeasure, parseText, foodFromServing, normalizeUnitWord } from "./parser.js";
 
 const INDEX = new FoodIndex(FOODS);
 const names = (t) => parseText(t, INDEX).map((i) => [i.food ? i.food.name : null, i.grams]);
@@ -73,4 +73,33 @@ test("unknown and absurd", () => {
 
 test("macros", () => {
   assert.deepEqual(parseText("100g chicken breast", INDEX)[0].macros, { kcal: 165, protein: 31, carbs: 0, fat: 3.6 });
+});
+
+test("saved foods: label helper and unit words", () => {
+  const whey = foodFromServing({ name: "Gold Standard Whey", servingG: 31, kcal: 120, protein: 24, carbs: 3, fat: 1.5, servingUnit: "scoops", aliases: ["whey", "Protein Shake", "whey"] });
+  assert.equal(whey.name, "gold standard whey");
+  assert.equal(whey.serving_unit, "scoop");
+  assert.deepEqual(whey.units, { serving: 31, scoop: 31 });
+  assert.deepEqual(whey.aliases, ["whey", "protein shake"]);
+  assert.throws(() => foodFromServing({ name: "x", servingG: 0, kcal: 1 }));
+  for (const [word, want] of [["scoops", "scoop"], ["Scoop", "scoop"], ["tablespoons", "tbsp"], ["", "serving"], [null, "serving"], ["g", "serving"], ["pods", "pod"], ["patties", "patty"]]) {
+    assert.equal(normalizeUnitWord(word), want, String(word));
+  }
+});
+
+test("saved foods: log by the serving", () => {
+  const whey = foodFromServing({ name: "gold standard whey", servingG: 31, kcal: 120, protein: 24, carbs: 3, fat: 1.5, servingUnit: "scoop", aliases: ["whey"] });
+  const bar = foodFromServing({ name: "rx bar", servingG: 52, kcal: 210, protein: 12, carbs: 24, fat: 9, servingUnit: "bar" });
+  const index = new FoodIndex([...FOODS, whey, bar]);
+  const item = parseText("2 scoops whey", index)[0];
+  assert.equal(item.food, whey);
+  assert.equal(item.grams, 62);
+  assert.deepEqual(item.macros, { kcal: 240, protein: 48, carbs: 6, fat: 3 });
+  assert.equal(parseText("1.5 servings of gold standard whey", index)[0].macros.kcal, 180);
+  assert.equal(parseText("half a scoop of whey", index)[0].macros.protein, 12);
+  assert.equal(parseText("whey", index)[0].grams, 31);
+  assert.equal(parseText("45g gold standard whey", index)[0].macros.kcal, 174.2);
+  assert.deepEqual(parseText("2 rx bars and 2 eggs", index).map((i) => [i.food.name, i.grams]), [["rx bar", 104], ["egg", 100]]);
+  index.reset(FOODS);
+  assert.equal(parseText("1 scoop whey protein", index)[0].food.source, undefined);   // built-in again
 });
