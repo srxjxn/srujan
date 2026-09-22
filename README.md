@@ -20,11 +20,14 @@ JavaScript, with your log saved in the browser on the device. No server, no data
 
 1. Go to https://vercel.com/new and import this repository (branch `claude/food-tracker-macros-ujfjip`,
    or `main` once merged).
-2. Leave the settings as they are. `vercel.json` tells Vercel to serve the `web/` folder.
+2. Leave the settings as they are. `vercel.json` declares an explicit static build of the `web/` folder,
+   which stops Vercel from auto-detecting the Python server (it would otherwise see `requirements.txt`
+   and try to deploy FastAPI).
 3. Deploy, then open the URL on your phone. In Safari or Chrome use **Share → Add to Home Screen**
    to get an app icon that opens full-screen.
 
-Or from a terminal: `npx vercel` in the repo root.
+Or from a terminal: `npx vercel --prod` in the repo root. If a deploy ever complains about a FastAPI
+entrypoint, run it from inside the folder instead: `cd web && npx vercel --prod`.
 
 Because the data lives in that browser only, use **Export data** in the footer for a backup and
 **Import** to restore it on another device. The Claude fallback for unknown foods is server-side
