@@ -23,6 +23,7 @@ class Food:
     units: dict[str, float] = field(default_factory=dict)
     aliases: list[str] = field(default_factory=list)
     source: str = "database"
+    serving_unit: str = "serving"   # what one serving is called: "scoop", "bar", "slice", ...
 
     def macros_for(self, grams: float) -> dict[str, float]:
         k = grams / 100.0
@@ -36,6 +37,28 @@ class Food:
 
 def F(name, kcal, p, c, f, serving_g, units=None, aliases=None) -> Food:
     return Food(name, kcal, p, c, f, serving_g, units or {}, aliases or [])
+
+
+def food_from_serving(name: str, serving_g: float, kcal: float, protein: float, carbs: float, fat: float,
+                      serving_unit: str = "serving", aliases: list[str] | None = None,
+                      source: str = "custom") -> Food:
+    """Build a Food straight off a nutrition label: the macros for ONE serving of `serving_g` grams.
+
+    Internally everything is per 100 g, so "2 scoops" or "45g" of the food both come out exact.
+    The serving word ("scoop", "bar") is registered as a unit alongside "serving".
+    """
+    if serving_g <= 0:
+        raise ValueError("serving_g must be positive")
+    k = 100.0 / serving_g
+    unit = (serving_unit or "serving").strip().lower() or "serving"
+    units = {"serving": serving_g, unit: serving_g}
+    clean_aliases = []
+    for a in aliases or []:
+        a = a.strip().lower()
+        if a and a != name.strip().lower() and a not in clean_aliases:
+            clean_aliases.append(a)
+    return Food(name.strip().lower(), round(kcal * k, 4), round(protein * k, 4), round(carbs * k, 4),
+                round(fat * k, 4), serving_g, units, clean_aliases, source, unit)
 
 
 FOODS: list[Food] = [

@@ -51,6 +51,13 @@ class Database:
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         with self.conn() as c:
             c.executescript(SCHEMA)
+            self._migrate(c)
+
+    @staticmethod
+    def _migrate(c) -> None:
+        cols = {r["name"] for r in c.execute("PRAGMA table_info(custom_foods)")}
+        if "serving_unit" not in cols:
+            c.execute("ALTER TABLE custom_foods ADD COLUMN serving_unit TEXT NOT NULL DEFAULT 'serving'")
 
     @contextmanager
     def conn(self):
@@ -121,20 +128,33 @@ class Database:
     def save_food(self, food: Food) -> None:
         with self.conn() as c:
             c.execute(
-                "INSERT INTO custom_foods(name, kcal, protein, carbs, fat, serving_g, aliases, units, source, created_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?)"
+                "INSERT INTO custom_foods(name, kcal, protein, carbs, fat, serving_g, aliases, units, source,"
+                " serving_unit, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
                 " ON CONFLICT(name) DO UPDATE SET kcal=excluded.kcal, protein=excluded.protein, carbs=excluded.carbs,"
                 " fat=excluded.fat, serving_g=excluded.serving_g, aliases=excluded.aliases, units=excluded.units,"
-                " source=excluded.source",
+                " source=excluded.source, serving_unit=excluded.serving_unit",
                 (food.name.strip().lower(), food.kcal, food.protein, food.carbs, food.fat, food.serving_g,
-                 json.dumps(food.aliases), json.dumps(food.units), food.source, _now()),
+                 json.dumps(food.aliases), json.dumps(food.units), food.source, food.serving_unit or "serving", _now()),
             )
+
+    @staticmethod
+    def _food(r) -> Food:
+        return Food(r["name"], r["kcal"], r["protein"], r["carbs"], r["fat"], r["serving_g"],
+                    json.loads(r["units"]), json.loads(r["aliases"]), r["source"], r["serving_unit"] or "serving")
 
     def custom_foods(self) -> list[Food]:
         with self.conn() as c:
             rows = c.execute("SELECT * FROM custom_foods ORDER BY id").fetchall()
-        return [Food(r["name"], r["kcal"], r["protein"], r["carbs"], r["fat"], r["serving_g"],
-                     json.loads(r["units"]), json.loads(r["aliases"]), r["source"]) for r in rows]
+        return [self._food(r) for r in rows]
+
+    def get_food(self, name: str) -> Food | None:
+        with self.conn() as c:
+            row = c.execute("SELECT * FROM custom_foods WHERE name=?", (name.strip().lower(),)).fetchone()
+        return self._food(row) if row else None
+
+    def delete_food(self, name: str) -> bool:
+        with self.conn() as c:
+            return c.execute("DELETE FROM custom_foods WHERE name=?", (name.strip().lower(),)).rowcount > 0
 
     # ---- goals -------------------------------------------------------------
     def get_goals(self) -> dict:

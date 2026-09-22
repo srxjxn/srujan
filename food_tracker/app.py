@@ -14,8 +14,8 @@ from pydantic import BaseModel, Field
 
 from . import claude_lookup
 from .db import Database
-from .foods import FOODS, Food
-from .parser import FoodIndex, grams_for, parse_text
+from .foods import FOODS, Food, food_from_serving
+from .parser import SERVING_UNITS, FoodIndex, grams_for, normalize_unit_word, parse_text
 
 log = logging.getLogger("food_tracker")
 
@@ -25,8 +25,14 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 app = FastAPI(title="Food Tracker", version="1.0.0")
 db = Database(DB_PATH)
 index = FoodIndex(FOODS)
-for _f in db.custom_foods():
-    index.add(_f)
+
+
+def rebuild_index() -> None:
+    """Built-in foods first, then saved foods so they win on name clashes."""
+    index.reset([*FOODS, *db.custom_foods()])
+
+
+rebuild_index()
 
 
 # --------------------------------------------------------------------------- #
@@ -52,6 +58,19 @@ class ManualEntry(BaseModel):
 
 class GramsUpdate(BaseModel):
     grams: float = Field(gt=0)
+
+
+class MyFood(BaseModel):
+    """A food saved from its nutrition label: macros for one serving of `serving_g` grams."""
+    name: str = Field(min_length=1, max_length=200)
+    aliases: list[str] = Field(default_factory=list)
+    serving_unit: str = Field(default="serving", max_length=40)
+    serving_g: float = Field(gt=0, le=10_000)
+    kcal: float = Field(ge=0)
+    protein: float = Field(default=0, ge=0)
+    carbs: float = Field(default=0, ge=0)
+    fat: float = Field(default=0, ge=0)
+    replaces: str | None = None   # old name when renaming an existing saved food
 
 
 class Goals(BaseModel):
@@ -87,6 +106,18 @@ def _day_payload(d: str) -> dict:
     return {"date": d, "entries": entries, "totals": _totals(entries), "goals": db.get_goals()}
 
 
+def _food_payload(f: Food) -> dict:
+    """A saved food as the UI shows it: per-serving macros, plus the per-100 g numbers underneath."""
+    return {"name": f.name, "aliases": f.aliases, "serving_unit": f.serving_unit or "serving",
+            "serving_g": f.serving_g, "source": f.source, **f.macros_for(f.serving_g),
+            "per_100g": {"kcal": round(f.kcal, 1), "protein": round(f.protein, 1),
+                         "carbs": round(f.carbs, 1), "fat": round(f.fat, 1)}}
+
+
+def _my_foods() -> list[dict]:
+    return [_food_payload(f) for f in db.custom_foods()]
+
+
 # --------------------------------------------------------------------------- #
 # Routes
 # --------------------------------------------------------------------------- #
@@ -98,7 +129,8 @@ def home():
 
 @app.get("/api/status")
 def status():
-    return {"claude_lookup": claude_lookup.available(), "foods": len(index.keys), "model": claude_lookup.MODEL}
+    return {"claude_lookup": claude_lookup.available(), "foods": len(index.keys), "model": claude_lookup.MODEL,
+            "serving_units": SERVING_UNITS}
 
 
 @app.get("/api/day")
@@ -148,9 +180,7 @@ def manual_entry(req: ManualEntry):
     grams = req.grams or 100.0
     macros = {"kcal": req.kcal, "protein": req.protein, "carbs": req.carbs, "fat": req.fat}
     if req.remember:
-        k = 100.0 / grams
-        food = Food(req.name.strip().lower(), round(req.kcal * k, 2), round(req.protein * k, 2),
-                    round(req.carbs * k, 2), round(req.fat * k, 2), serving_g=grams, source="custom")
+        food = food_from_serving(req.name, grams, req.kcal, req.protein, req.carbs, req.fat)
         db.save_food(food)
         index.add(food)
     entry = db.add_entry(d, req.name, req.name.strip().lower(), grams, macros, "manual")
@@ -183,6 +213,33 @@ def put_goals(req: Goals):
     return db.set_goals({k: v for k, v in req.model_dump().items() if v is not None})
 
 
+# ---- my foods: saved from the nutrition label, logged by the serving ------------
+
+@app.get("/api/my-foods")
+def list_my_foods():
+    return _my_foods()
+
+
+@app.post("/api/my-foods")
+def save_my_food(req: MyFood):
+    name = req.name.strip().lower()
+    if req.replaces and req.replaces.strip().lower() != name:
+        db.delete_food(req.replaces)
+    food = food_from_serving(name, req.serving_g, req.kcal, req.protein, req.carbs, req.fat,
+                             normalize_unit_word(req.serving_unit), req.aliases)
+    db.save_food(food)
+    rebuild_index()   # a rename or alias change may have orphaned old keys
+    return {"food": _food_payload(food), "foods": _my_foods()}
+
+
+@app.delete("/api/my-foods/{name}")
+def delete_my_food(name: str):
+    if not db.delete_food(name):
+        raise HTTPException(404, "saved food not found")
+    rebuild_index()
+    return {"foods": _my_foods()}
+
+
 @app.get("/api/foods")
 def search_foods(q: str = "", limit: int = 12):
     q = q.strip().lower()
@@ -191,7 +248,8 @@ def search_foods(q: str = "", limit: int = 12):
         if not q or q in key or q in food.name:
             seen.setdefault(food.name, food)
     results = sorted(seen.values(), key=lambda f: (not f.name.startswith(q), len(f.name)))[:max(1, min(limit, 50))]
-    return [{"name": f.name, "serving_g": f.serving_g, "source": f.source, **f.macros_for(f.serving_g)} for f in results]
+    return [{"name": f.name, "serving_g": f.serving_g, "serving_unit": f.serving_unit or "serving", "source": f.source,
+             **f.macros_for(f.serving_g)} for f in results]
 
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

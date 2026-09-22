@@ -1,11 +1,13 @@
 import { FOODS } from "./foods.js";
-import { FoodIndex, parseText, macrosFor } from "./parser.js";
+import { FoodIndex, parseText, macrosFor, foodFromServing, SERVING_UNITS } from "./parser.js";
 import { Store } from "./store.js";
 
 const $ = (s) => document.querySelector(s);
 const store = new Store();
 const index = new FoodIndex(FOODS);
-for (const f of store.customFoods()) index.add(f);
+// Built-in foods first, then saved foods so they win on name clashes.
+const rebuildIndex = () => index.reset([...FOODS, ...store.customFoods()]);
+rebuildIndex();
 
 const state = { date: localISO(new Date()) };
 const MACROS = [
@@ -20,6 +22,12 @@ function shiftDate(days) { const d = new Date(state.date + "T12:00:00"); d.setDa
 function fmt(n, dp = 0) { return Number(n || 0).toFixed(dp); }
 function esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 function flash(msg, cls = "ok") { const f = $("#flash"); f.textContent = msg; f.className = "flash " + cls; }
+function plural(unit, n) { return n === 1 ? unit : unit.endsWith("y") && !/[aeiou]y$/.test(unit) ? unit.slice(0, -1) + "ies" : unit + "s"; }
+function fmtServings(grams, food) {
+  if (!food || !food.serving_g || !grams) return "";
+  const n = Math.round(grams / food.serving_g * 100) / 100;
+  return `${n} ${plural(food.serving_unit || "serving", n)}`;
+}
 
 // ---- rendering -----------------------------------------------------------
 function renderDay() {
@@ -45,7 +53,7 @@ function renderDay() {
       <li data-id="${e.id}">
         <div>
           <div class="desc">${esc(e.description)}${e.source && e.source !== "database" ? `<span class="badge ${e.source}">${e.source}</span>` : ""}</div>
-          <div class="meta">${e.food_name && e.food_name !== e.description.toLowerCase() ? esc(e.food_name) + " \u00b7 " : ""}<span class="grams" title="Tap to change amount">${fmt(e.grams)} g</span></div>
+          <div class="meta">${e.food_name && e.food_name !== e.description.toLowerCase() ? esc(e.food_name) + " \u00b7 " : ""}${fmtServings(e.grams, store.getFood(e.food_name)) ? esc(fmtServings(e.grams, store.getFood(e.food_name))) + " \u00b7 " : ""}<span class="grams" title="Tap to change amount">${fmt(e.grams)} g</span></div>
         </div>
         <div class="macros"><span class="k"><b>${fmt(e.kcal)}</b> kcal</span><span class="p"><b>${fmt(e.protein)}</b>P</span><span class="c"><b>${fmt(e.carbs)}</b>C</span><span class="f"><b>${fmt(e.fat)}</b>F</span></div>
         <button class="icon del" title="Delete">\u00d7</button>
@@ -96,10 +104,8 @@ function renderUnmatched(items) {
     const grams = Number(fd.get("grams")) || 100;
     const macros = { kcal: +fd.get("kcal") || 0, protein: +fd.get("protein") || 0, carbs: +fd.get("carbs") || 0, fat: +fd.get("fat") || 0 };
     if (fd.get("remember") === "on") {
-      const k = 100 / grams;
-      const food = { name: name.toLowerCase(), kcal: +(macros.kcal * k).toFixed(2), protein: +(macros.protein * k).toFixed(2),
-        carbs: +(macros.carbs * k).toFixed(2), fat: +(macros.fat * k).toFixed(2), serving_g: grams, units: {}, aliases: [], source: "custom" };
-      store.saveFood(food); index.add(food);
+      const food = foodFromServing({ name, servingG: grams, ...macros });
+      store.saveFood(food); index.add(food); renderMyFoods();
     }
     store.addEntry(state.date, name, name.toLowerCase(), grams, macros, "manual");
     renderDay(); renderWeek();
@@ -166,6 +172,90 @@ $("#goalsform").onsubmit = (ev) => {
   ev.target.classList.remove("open");
 };
 
+// ---- my foods: saved from the label, logged by the serving ----------------
+function foodView(f) { return { ...f, serving_unit: f.serving_unit || "serving", aliases: f.aliases || [], ...macrosFor(f, f.serving_g) }; }
+
+function renderMyFoods() {
+  const foods = store.customFoods().map(foodView);
+  const ul = $("#foodlist-mine");
+  if (!foods.length) { ul.innerHTML = `<li class="empty">No saved foods yet. Add the ones you eat every week.</li>`; return; }
+  ul.innerHTML = foods.map((f) => `
+    <li data-name="${esc(f.name)}">
+      <div>
+        <div class="desc">${esc(f.name)}</div>
+        <div class="meta">1 ${esc(f.serving_unit)} = ${fmt(f.serving_g, f.serving_g % 1 ? 1 : 0)} g${f.aliases.length ? " \u00b7 also " + esc(f.aliases.join(", ")) : ""}</div>
+      </div>
+      <div class="macros"><span class="k"><b>${fmt(f.kcal)}</b> kcal</span><span class="p"><b>${fmt(f.protein, 1)}</b>P</span><span class="c"><b>${fmt(f.carbs, 1)}</b>C</span><span class="f"><b>${fmt(f.fat, 1)}</b>F</span></div>
+      <div class="actions">
+        <button class="small log" title="Log one serving to this day">+1 ${esc(f.serving_unit)}</button>
+        <button class="small edit">Edit</button>
+        <button class="icon del" title="Remove saved food">\u00d7</button>
+      </div>
+    </li>`).join("");
+  ul.querySelectorAll(".log").forEach((b) => b.onclick = () => logSaved(store.getFood(b.closest("li").dataset.name)));
+  ul.querySelectorAll(".edit").forEach((b) => b.onclick = () => openFoodForm(store.getFood(b.closest("li").dataset.name)));
+  ul.querySelectorAll(".del").forEach((b) => b.onclick = () => deleteSaved(b.closest("li").dataset.name));
+}
+
+function openFoodForm(food) {
+  const f = $("#foodform");
+  f.reset();
+  f.elements.replaces.value = food ? food.name : "";
+  if (food) {
+    const v = foodView(food);
+    f.elements.name.value = v.name;
+    f.elements.aliases.value = v.aliases.join(", ");
+    f.elements.serving_unit.value = v.serving_unit;
+    f.elements.serving_g.value = v.serving_g;
+    for (const [k] of MACROS) f.elements[k].value = v[k];
+  }
+  f.classList.add("open");
+  updateFoodPreview();
+  f.elements.name.focus();
+}
+
+function updateFoodPreview() {
+  const f = $("#foodform"), g = Number(f.elements.serving_g.value), kcal = Number(f.elements.kcal.value);
+  $("#foodpreview").textContent = g > 0 && f.elements.kcal.value !== "" ? `= ${fmt(kcal / g * 100)} kcal per 100 g` : "";
+}
+
+$("#servingunits").innerHTML = SERVING_UNITS.map((u) => `<option value="${u}">`).join("");
+$("#addfood").onclick = () => $("#foodform").classList.contains("open") && !$("#foodform").elements.replaces.value ? $("#foodform").classList.remove("open") : openFoodForm(null);
+$("#cancelfood").onclick = () => $("#foodform").classList.remove("open");
+$("#foodform").oninput = updateFoodPreview;
+$("#foodform").onsubmit = (ev) => {
+  ev.preventDefault();
+  const el = ev.target.elements;
+  const name = el.name.value.trim().toLowerCase();
+  try {
+    const food = foodFromServing({
+      name, servingG: Number(el.serving_g.value), servingUnit: el.serving_unit.value,
+      aliases: el.aliases.value.split(",").map((a) => a.trim()).filter(Boolean),
+      kcal: Number(el.kcal.value || 0), protein: Number(el.protein.value || 0), carbs: Number(el.carbs.value || 0), fat: Number(el.fat.value || 0),
+    });
+    if (el.replaces.value && el.replaces.value !== name) store.deleteFood(el.replaces.value);
+    store.saveFood(food); rebuildIndex(); renderMyFoods(); renderDay();
+    ev.target.classList.remove("open");
+    flash(`Saved ${food.name}. Type "2 ${plural(food.serving_unit, 2)} ${food.name}" to log it.`);
+  } catch (e) { flash(e.message, "err"); }
+};
+
+function logSaved(food) {
+  if (!food) return;
+  const unit = food.serving_unit || "serving";
+  const text = `1 ${unit} ${food.name}`;
+  const item = parseText(text, index).find((i) => i.food);
+  if (!item) { flash(`Could not log "${text}".`, "err"); return; }
+  const e = store.addEntry(state.date, text, item.food.name, item.grams, item.macros, item.food.source || "custom");
+  renderDay(); renderWeek();
+  flash(`Added ${text} \u00b7 ${fmt(e.kcal)} kcal`);
+}
+
+function deleteSaved(name) {
+  if (!confirm(`Remove "${name}" from your saved foods? Entries already logged stay as they are.`)) return;
+  store.deleteFood(name); rebuildIndex(); renderMyFoods(); renderDay();
+}
+
 // suggestions for the item currently being typed
 let suggestTimer;
 $("#text").oninput = () => {
@@ -178,7 +268,7 @@ $("#text").oninput = () => {
     const seen = new Map();
     for (const [key, food] of index.keys) if (key.includes(raw) || food.name.includes(raw)) seen.set(food.name, food);
     const foods = [...seen.values()].sort((a, b) => (a.name.startsWith(raw) ? 0 : 1) - (b.name.startsWith(raw) ? 0 : 1) || a.name.length - b.name.length).slice(0, 8);
-    $("#foodlist").innerHTML = foods.map((f) => `<option value="${esc(prefix + f.name)}">${fmt(f.serving_g)}g \u00b7 ${fmt(macrosFor(f, f.serving_g).kcal)} kcal</option>`).join("");
+    $("#foodlist").innerHTML = foods.map((f) => `<option value="${esc(prefix + f.name)}">${f.source === "custom" ? `1 ${esc(f.serving_unit || "serving")} = ` : ""}${fmt(f.serving_g)}g \u00b7 ${fmt(macrosFor(f, f.serving_g).kcal)} kcal</option>`).join("");
   }, 150);
 };
 
@@ -202,11 +292,12 @@ $("#import").onclick = (e) => {
   if (!pasted) return;
   try {
     store.importJSON(pasted);
-    for (const f of store.customFoods()) index.add(f);
+    rebuildIndex(); renderMyFoods();
     load(state.date); flash("Backup restored.");
   } catch (err) { flash(err.message, "err"); }
 };
 
+renderMyFoods();
 load(state.date);
 $("#status").textContent = `${index.keys.size} foods in the database \u00b7 your log is saved on this device`;
 $("#text").focus();

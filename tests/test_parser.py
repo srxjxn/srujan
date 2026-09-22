@@ -1,7 +1,7 @@
 import unittest
 
-from food_tracker.foods import FOODS
-from food_tracker.parser import FoodIndex, extract_measure, parse_text
+from food_tracker.foods import FOODS, food_from_serving
+from food_tracker.parser import FoodIndex, extract_measure, normalize_unit_word, parse_text
 
 INDEX = FoodIndex(FOODS)
 
@@ -88,6 +88,61 @@ class ParseTests(unittest.TestCase):
     def test_macros(self):
         item = parse("100g chicken breast")[0]
         self.assertEqual(item.macros, {"kcal": 165.0, "protein": 31.0, "carbs": 0.0, "fat": 3.6})
+
+
+class SavedFoodTests(unittest.TestCase):
+    """Foods saved from a nutrition label: log by the serving and get the label's numbers back."""
+
+    def setUp(self):
+        self.whey = food_from_serving("gold standard whey", 31, 120, 24, 3, 1.5, "scoops", ["whey", "protein shake"])
+        self.bar = food_from_serving("rx bar", 52, 210, 12, 24, 9, "bar")
+        self.index = FoodIndex([*FOODS, self.whey, self.bar])
+
+    def one(self, text):
+        items = parse_text(text, self.index)
+        self.assertEqual(len(items), 1, text)
+        return items[0]
+
+    def test_label_helper(self):
+        self.assertEqual(self.whey.serving_unit, "scoops")   # helper keeps the word; the API normalises it
+        self.assertEqual(self.whey.units, {"serving": 31, "scoops": 31})
+        self.assertEqual(self.whey.aliases, ["whey", "protein shake"])
+        self.assertEqual(self.whey.macros_for(31), {"kcal": 120.0, "protein": 24.0, "carbs": 3.0, "fat": 1.5})
+        with self.assertRaises(ValueError):
+            food_from_serving("x", 0, 1, 0, 0, 0)
+
+    def test_unit_words(self):
+        for word, want in [("scoops", "scoop"), ("Scoop", "scoop"), ("tablespoons", "tbsp"), ("", "serving"),
+                           (None, "serving"), ("g", "serving"), ("pods", "pod"), ("patties", "patty")]:
+            self.assertEqual(normalize_unit_word(word), want, word)
+
+    def test_servings(self):
+        whey = food_from_serving("gold standard whey", 31, 120, 24, 3, 1.5, normalize_unit_word("scoops"), ["whey"])
+        index = FoodIndex([*FOODS, whey])
+        item = parse_text("2 scoops whey", index)[0]
+        self.assertIs(item.food, whey)                      # the saved food wins over built-in whey protein
+        self.assertEqual(item.grams, 62.0)
+        self.assertEqual(item.macros, {"kcal": 240.0, "protein": 48.0, "carbs": 6.0, "fat": 3.0})
+        self.assertEqual(parse_text("1.5 servings of gold standard whey", index)[0].macros["kcal"], 180.0)
+        self.assertEqual(parse_text("half a scoop of whey", index)[0].macros["protein"], 12.0)
+        self.assertEqual(parse_text("whey", index)[0].grams, 31.0)
+        self.assertEqual(parse_text("protein shake x2", FoodIndex([*FOODS, self.whey]))[0].grams, 62.0)
+
+    def test_grams_still_work(self):
+        item = self.one("45g gold standard whey")
+        self.assertEqual(item.grams, 45.0)
+        self.assertEqual(item.macros["kcal"], 174.2)     # 120 / 31 * 45
+
+    def test_bar_and_mixed_text(self):
+        items = parse_text("2 rx bars and 2 eggs", self.index)
+        self.assertEqual([(i.food.name, i.grams) for i in items], [("rx bar", 104.0), ("egg", 100.0)])
+        self.assertEqual(items[0].macros["kcal"], 420.0)
+
+    def test_reset_restores_builtin(self):
+        index = FoodIndex([*FOODS, food_from_serving("whey protein", 30, 100, 20, 2, 1, "scoop")])
+        self.assertEqual(parse_text("1 scoop whey protein", index)[0].macros["kcal"], 100.0)
+        index.reset(FOODS)
+        self.assertEqual(parse_text("1 scoop whey protein", index)[0].food.source, "database")
 
 
 if __name__ == "__main__":
