@@ -1,0 +1,11 @@
+# Only web/ is deployed to Vercel. Hide the Python server so Vercel's
+# framework detection can't mistake this for a FastAPI project.
+food_tracker/
+tests/
+scripts/
+data/
+*.py
+requirements.txt
+pyproject.toml
+README.md
+.github/
