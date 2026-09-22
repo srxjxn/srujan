@@ -2,7 +2,7 @@
 const KEY = "food-tracker:v1";
 export const DEFAULT_GOALS = { kcal: 2200, protein: 150, carbs: 220, fat: 70 };
 
-function load() {
+function loadState() {
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) return { entries: [], customFoods: [], goals: {}, nextId: 1, ...JSON.parse(raw) };
@@ -11,7 +11,7 @@ function load() {
 }
 
 export class Store {
-  constructor() { this.data = load(); }
+  constructor() { this.data = loadState(); }
   save() { try { localStorage.setItem(KEY, JSON.stringify(this.data)); } catch {} }
 
   entriesFor(date) { return this.data.entries.filter((e) => e.date === date); }
