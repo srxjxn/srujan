@@ -45,10 +45,10 @@ function renderDay() {
       <li data-id="${e.id}">
         <div>
           <div class="desc">${esc(e.description)}${e.source && e.source !== "database" ? `<span class="badge ${e.source}">${e.source}</span>` : ""}</div>
-          <div class="meta">${e.food_name && e.food_name !== e.description.toLowerCase() ? esc(e.food_name) + " · " : ""}<span class="grams" title="Tap to change amount">${fmt(e.grams)} g</span></div>
+          <div class="meta">${e.food_name && e.food_name !== e.description.toLowerCase() ? esc(e.food_name) + " \u00b7 " : ""}<span class="grams" title="Tap to change amount">${fmt(e.grams)} g</span></div>
         </div>
         <div class="macros"><span class="k"><b>${fmt(e.kcal)}</b> kcal</span><span class="p"><b>${fmt(e.protein)}</b>P</span><span class="c"><b>${fmt(e.carbs)}</b>C</span><span class="f"><b>${fmt(e.fat)}</b>F</span></div>
-        <button class="icon del" title="Delete">×</button>
+        <button class="icon del" title="Delete">\u00d7</button>
       </li>`).join("");
   }
   ul.querySelectorAll(".del").forEach((b) => b.onclick = () => { store.deleteEntry(+b.closest("li").dataset.id); renderDay(); renderWeek(); });
@@ -66,7 +66,7 @@ function renderWeek() {
     return `<div class="day ${d.date === state.date ? "today" : ""}" data-date="${d.date}">
       <div class="col"><i style="height:${Math.round(d.kcal / max * 100)}%"></i></div>
       <div>${dt.toLocaleDateString(undefined, { weekday: "short" })}</div>
-      <div class="kc">${d.kcal ? fmt(d.kcal) : "–"}</div></div>`;
+      <div class="kc">${d.kcal ? fmt(d.kcal) : "\u2013"}</div></div>`;
   }).join("");
   $("#week").querySelectorAll(".day").forEach((el) => el.onclick = () => load(el.dataset.date));
 }
@@ -77,7 +77,7 @@ function renderUnmatched(items) {
   box.hidden = false;
   list.innerHTML = items.map((u, i) => `
     <div class="item">
-      <div><b>${esc(u.input)}</b> <span class="meta">— enter the nutrition for the amount you ate</span></div>
+      <div><b>${esc(u.input)}</b> <span class="meta">\u2014 enter the nutrition for the amount you ate</span></div>
       <form class="manual-form" data-i="${i}">
         <div class="name"><label>Name</label><input name="name" value="${esc(u.foodText || u.input)}" required></div>
         <div><label>Grams</label><input name="grams" type="number" inputmode="decimal" min="1" step="1" placeholder="100"></div>
@@ -125,7 +125,7 @@ $("#logform").onsubmit = (ev) => {
   $("#text").value = "";
   if (added.length) {
     const kcal = added.reduce((s, e) => s + e.kcal, 0);
-    flash(`Added ${added.map((e) => `${e.food_name} (${fmt(e.grams)}g)`).join(", ")} · ${fmt(kcal)} kcal`);
+    flash(`Added ${added.map((e) => `${e.food_name} (${fmt(e.grams)}g)`).join(", ")} \u00b7 ${fmt(kcal)} kcal`);
   } else if (!unmatched.length) flash("Nothing recognised in that text.", "err");
   else flash("");
   if (unmatched.length) $("#unmatched").scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -178,29 +178,35 @@ $("#text").oninput = () => {
     const seen = new Map();
     for (const [key, food] of index.keys) if (key.includes(raw) || food.name.includes(raw)) seen.set(food.name, food);
     const foods = [...seen.values()].sort((a, b) => (a.name.startsWith(raw) ? 0 : 1) - (b.name.startsWith(raw) ? 0 : 1) || a.name.length - b.name.length).slice(0, 8);
-    $("#foodlist").innerHTML = foods.map((f) => `<option value="${esc(prefix + f.name)}">${fmt(f.serving_g)}g · ${fmt(macrosFor(f, f.serving_g).kcal)} kcal</option>`).join("");
+    $("#foodlist").innerHTML = foods.map((f) => `<option value="${esc(prefix + f.name)}">${fmt(f.serving_g)}g \u00b7 ${fmt(macrosFor(f, f.serving_g).kcal)} kcal</option>`).join("");
   }, 150);
 };
 
 // backup / restore (data lives only in this browser)
-$("#export").onclick = (e) => {
+$("#export").onclick = async (e) => {
   e.preventDefault();
-  const blob = new Blob([store.exportJSON()], { type: "application/json" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob); a.download = `food-tracker-${localISO(new Date())}.json`; a.click();
-  URL.revokeObjectURL(a.href);
-};
-$("#import").onclick = (e) => { e.preventDefault(); $("#importfile").click(); };
-$("#importfile").onchange = async (e) => {
-  const file = e.target.files[0]; if (!file) return;
+  const json = store.exportJSON();
   try {
-    store.importJSON(await file.text());
+    await navigator.clipboard.writeText(json);
+    flash("Backup copied to the clipboard. Paste it somewhere safe (Notes, email) to keep it.");
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = json; ta.readOnly = true; ta.style.cssText = "width:100%;height:160px;margin-top:8px;font:12px monospace";
+    $("#status").after(ta); ta.select();
+    flash("Copy the text below to keep a backup.");
+  }
+};
+$("#import").onclick = (e) => {
+  e.preventDefault();
+  const pasted = prompt("Paste a backup here to restore it (this replaces the log on this device):");
+  if (!pasted) return;
+  try {
+    store.importJSON(pasted);
     for (const f of store.customFoods()) index.add(f);
-    load(state.date); flash("Data imported.");
+    load(state.date); flash("Backup restored.");
   } catch (err) { flash(err.message, "err"); }
-  e.target.value = "";
 };
 
 load(state.date);
-$("#status").textContent = `${index.keys.size} foods in the database · your log is saved on this device`;
+$("#status").textContent = `${index.keys.size} foods in the database \u00b7 your log is saved on this device`;
 $("#text").focus();
