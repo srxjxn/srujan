@@ -1,0 +1,5 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2
+# optional: enables macro lookup for foods not in the built-in database
+anthropic>=1.0
