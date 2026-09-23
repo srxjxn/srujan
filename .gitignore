@@ -4,3 +4,4 @@ data/
 .env
 .venv/
 .vercel/
+node_modules/

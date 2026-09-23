@@ -36,6 +36,28 @@ only, so the static version asks you for the macros instead (and remembers them)
 To pull food database changes through to the web build: `python scripts/build_foods_js.py`.
 JS parser tests: `node --test web/parser.test.mjs`.
 
+## Keep the Mac and the phone in sync
+
+Out of the box each browser keeps its own copy of the log. To see the same data everywhere, turn
+on sync: a tiny backend (`api/log.js`) stores the log in a Redis database attached to the Vercel
+project, protected by a password you choose. One-time setup, about two minutes:
+
+1. **Attach a database.** In the Vercel dashboard open the project → **Storage** → **Create
+   Database** → pick **Upstash** (Redis) → accept the defaults and connect it to the project.
+   Vercel adds the connection variables to the project automatically (`KV_REST_API_URL` and
+   `KV_REST_API_TOKEN`, or `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`; both names work).
+2. **Choose a sync password.** Project → **Settings** → **Environment Variables** → add
+   `FOOD_TRACKER_PASSWORD` with any password you like, for all environments.
+3. **Redeploy** (Deployments → ⋯ on the latest → Redeploy) so the new variables are picked up.
+4. On each device open the site, tap **Sync across devices** in the footer and enter the password.
+   The first device is offered a merge of whatever it already has; nothing is duplicated.
+
+**Turn off sync** in the footer returns that device to its own local log; the synced copy stays on
+the server. **Restore backup** while synced merges the pasted backup into the synced log.
+
+Local development with the API: `npm install && npm run dev` serves the app on http://localhost:8000
+with in-memory storage and the password `dev`. API tests: `npm test`.
+
 ## Run the server version locally
 
 ```bash
@@ -150,6 +172,8 @@ food_tracker/
 run.py              starts the server
 tests/              parser tests
 web/                static build for Vercel (parser.js, store.js, app.js, generated foods.js)
+api/log.js          sync backend (Vercel function): entries, saved foods and goals in Upstash Redis
+dev-server.mjs      serves web/ + api/ locally with in-memory storage
 scripts/build_foods_js.py  regenerates web/foods.js from foods.py
 vercel.json         serves web/ as a static site
 ```

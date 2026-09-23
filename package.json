@@ -1,0 +1,12 @@
+{
+  "name": "food-tracker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test web/parser.test.mjs api/log.test.mjs",
+    "dev": "FOOD_TRACKER_MEMORY=1 FOOD_TRACKER_PASSWORD=dev node dev-server.mjs"
+  },
+  "dependencies": {
+    "@upstash/redis": "^1.34.0"
+  }
+}

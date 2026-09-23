@@ -1,9 +1,10 @@
 import { FOODS } from "./foods.js";
 import { FoodIndex, parseText, macrosFor, foodFromServing, SERVING_UNITS } from "./parser.js";
-import { Store } from "./store.js";
+import { LocalStore, RemoteStore, getSyncConfig, setSyncConfig, clearSyncConfig } from "./store.js";
 
 const $ = (s) => document.querySelector(s);
-const store = new Store();
+const syncConfig = getSyncConfig();
+const store = syncConfig ? new RemoteStore(syncConfig.password) : new LocalStore();
 const index = new FoodIndex(FOODS);
 // Built-in foods first, then saved foods so they win on name clashes.
 const rebuildIndex = () => index.reset([...FOODS, ...store.customFoods()]);
@@ -22,6 +23,11 @@ function shiftDate(days) { const d = new Date(state.date + "T12:00:00"); d.setDa
 function fmt(n, dp = 0) { return Number(n || 0).toFixed(dp); }
 function esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 function flash(msg, cls = "ok") { const f = $("#flash"); f.textContent = msg; f.className = "flash " + cls; }
+// Run a store mutation, then re-render; any error (offline, wrong password) lands in the flash line.
+async function mutate(fn, after = () => { renderDay(); renderWeek(); }) {
+  try { const r = await fn(); after(); return r; }
+  catch (e) { flash(e.message, "err"); renderDay(); renderWeek(); return undefined; }
+}
 function plural(unit, n) { return n === 1 ? unit : unit.endsWith("y") && !/[aeiou]y$/.test(unit) ? unit.slice(0, -1) + "ies" : unit + "s"; }
 function fmtServings(grams, food) {
   if (!food || !food.serving_g || !grams) return "";
@@ -59,7 +65,7 @@ function renderDay() {
         <button class="icon del" title="Delete">\u00d7</button>
       </li>`).join("");
   }
-  ul.querySelectorAll(".del").forEach((b) => b.onclick = () => { store.deleteEntry(+b.closest("li").dataset.id); renderDay(); renderWeek(); });
+  ul.querySelectorAll(".del").forEach((b) => b.onclick = () => mutate(() => store.deleteEntry(b.closest("li").dataset.id)));
   ul.querySelectorAll(".grams").forEach((s) => s.onclick = () => editGrams(s));
 }
 
@@ -97,18 +103,21 @@ function renderUnmatched(items) {
         <label class="remember"><input type="checkbox" name="remember" checked> Remember this food so it's recognised next time</label>
       </form>
     </div>`).join("");
-  list.querySelectorAll("form.manual-form").forEach((f) => f.onsubmit = (ev) => {
+  list.querySelectorAll("form.manual-form").forEach((f) => f.onsubmit = async (ev) => {
     ev.preventDefault();
     const fd = new FormData(f);
     const name = String(fd.get("name")).trim();
     const grams = Number(fd.get("grams")) || 100;
     const macros = { kcal: +fd.get("kcal") || 0, protein: +fd.get("protein") || 0, carbs: +fd.get("carbs") || 0, fat: +fd.get("fat") || 0 };
-    if (fd.get("remember") === "on") {
-      const food = foodFromServing({ name, servingG: grams, ...macros });
-      store.saveFood(food); index.add(food); renderMyFoods();
-    }
-    store.addEntry(state.date, name, name.toLowerCase(), grams, macros, "manual");
-    renderDay(); renderWeek();
+    const ok = await mutate(async () => {
+      if (fd.get("remember") === "on") {
+        const food = foodFromServing({ name, servingG: grams, ...macros });
+        await store.saveFood(food); index.add(food); renderMyFoods();
+      }
+      await store.addEntry(state.date, name, name.toLowerCase(), grams, macros, "manual");
+      return true;
+    });
+    if (!ok) return;
     f.closest(".item").remove();
     if (!list.children.length) box.hidden = true;
     flash(`Added ${name}.`);
@@ -118,16 +127,22 @@ function renderUnmatched(items) {
 // ---- actions -------------------------------------------------------------
 function load(date) { state.date = date; renderDay(); renderWeek(); }
 
-$("#logform").onsubmit = (ev) => {
+$("#logform").onsubmit = async (ev) => {
   ev.preventDefault();
   const text = $("#text").value.trim();
   if (!text) return;
   const added = [], unmatched = [];
-  for (const item of parseText(text, index)) {
-    if (!item.food) { unmatched.push(item); continue; }
-    added.push(store.addEntry(state.date, item.input, item.food.name, item.grams, item.macros, item.food.source || "database"));
-  }
-  renderDay(); renderWeek(); renderUnmatched(unmatched);
+  const btn = $("#add"); btn.disabled = true;
+  const ok = await mutate(async () => {
+    for (const item of parseText(text, index)) {
+      if (!item.food) { unmatched.push(item); continue; }
+      added.push(await store.addEntry(state.date, item.input, item.food.name, item.grams, item.macros, item.food.source || "database"));
+    }
+    return true;
+  });
+  btn.disabled = false;
+  if (!ok) return;
+  renderUnmatched(unmatched);
   $("#text").value = "";
   if (added.length) {
     const kcal = added.reduce((s, e) => s + e.kcal, 0);
@@ -138,7 +153,7 @@ $("#logform").onsubmit = (ev) => {
 };
 
 function editGrams(span) {
-  const id = +span.closest("li").dataset.id, cur = parseFloat(span.textContent);
+  const id = span.closest("li").dataset.id, cur = parseFloat(span.textContent);
   const input = document.createElement("input");
   input.type = "number"; input.inputMode = "decimal"; input.min = "1"; input.step = "1"; input.value = cur;
   span.replaceWith(input); input.focus(); input.select();
@@ -146,8 +161,7 @@ function editGrams(span) {
   const commit = () => {
     if (done) return; done = true;
     const g = parseFloat(input.value);
-    if (g && g !== cur) store.updateGrams(id, g);
-    renderDay(); renderWeek();
+    if (g && g !== cur) mutate(() => store.updateGrams(id, g)); else renderDay();
   };
   input.onblur = commit;
   input.onkeydown = (e) => { if (e.key === "Enter") input.blur(); if (e.key === "Escape") { done = true; renderDay(); } };
@@ -164,12 +178,11 @@ $("#editgoals").onclick = () => {
   f.classList.toggle("open");
 };
 $("#cancelgoals").onclick = () => $("#goalsform").classList.remove("open");
-$("#goalsform").onsubmit = (ev) => {
+$("#goalsform").onsubmit = async (ev) => {
   ev.preventDefault();
   const body = {};
   for (const [k] of MACROS) body[k] = Number(ev.target.elements[k].value);
-  store.setGoals(body); renderDay(); renderWeek();
-  ev.target.classList.remove("open");
+  if (await mutate(() => store.setGoals(body))) ev.target.classList.remove("open");
 };
 
 // ---- my foods: saved from the label, logged by the serving ----------------
@@ -223,7 +236,7 @@ $("#servingunits").innerHTML = SERVING_UNITS.map((u) => `<option value="${u}">`)
 $("#addfood").onclick = () => $("#foodform").classList.contains("open") && !$("#foodform").elements.replaces.value ? $("#foodform").classList.remove("open") : openFoodForm(null);
 $("#cancelfood").onclick = () => $("#foodform").classList.remove("open");
 $("#foodform").oninput = updateFoodPreview;
-$("#foodform").onsubmit = (ev) => {
+$("#foodform").onsubmit = async (ev) => {
   ev.preventDefault();
   const el = ev.target.elements;
   const name = el.name.value.trim().toLowerCase();
@@ -233,8 +246,7 @@ $("#foodform").onsubmit = (ev) => {
       aliases: el.aliases.value.split(",").map((a) => a.trim()).filter(Boolean),
       kcal: Number(el.kcal.value || 0), protein: Number(el.protein.value || 0), carbs: Number(el.carbs.value || 0), fat: Number(el.fat.value || 0),
     });
-    if (el.replaces.value && el.replaces.value !== name) store.deleteFood(el.replaces.value);
-    store.saveFood(food); rebuildIndex(); renderMyFoods(); renderDay();
+    if (!(await mutate(() => store.saveFood(food, el.replaces.value || undefined), () => { rebuildIndex(); renderMyFoods(); renderDay(); }))) return;
     ev.target.classList.remove("open");
     flash(`Saved ${food.name}. Type "2 ${plural(food.serving_unit, 2)} ${food.name}" to log it.`);
   } catch (e) { flash(e.message, "err"); }
@@ -246,14 +258,13 @@ function logSaved(food) {
   const text = `1 ${unit} ${food.name}`;
   const item = parseText(text, index).find((i) => i.food);
   if (!item) { flash(`Could not log "${text}".`, "err"); return; }
-  const e = store.addEntry(state.date, text, item.food.name, item.grams, item.macros, item.food.source || "custom");
-  renderDay(); renderWeek();
-  flash(`Added ${text} \u00b7 ${fmt(e.kcal)} kcal`);
+  mutate(() => store.addEntry(state.date, text, item.food.name, item.grams, item.macros, item.food.source || "custom"))
+    .then((e) => e && flash(`Added ${text} \u00b7 ${fmt(e.kcal)} kcal`));
 }
 
 function deleteSaved(name) {
   if (!confirm(`Remove "${name}" from your saved foods? Entries already logged stay as they are.`)) return;
-  store.deleteFood(name); rebuildIndex(); renderMyFoods(); renderDay();
+  mutate(() => store.deleteFood(name), () => { rebuildIndex(); renderMyFoods(); renderDay(); });
 }
 
 // suggestions for the item currently being typed
@@ -286,18 +297,56 @@ $("#export").onclick = async (e) => {
     flash("Copy the text below to keep a backup.");
   }
 };
-$("#import").onclick = (e) => {
+$("#import").onclick = async (e) => {
   e.preventDefault();
-  const pasted = prompt("Paste a backup here to restore it (this replaces the log on this device):");
+  const pasted = prompt(store.remote ? "Paste a backup to merge it into your synced log:" : "Paste a backup here to restore it (this replaces the log on this device):");
   if (!pasted) return;
-  try {
-    store.importJSON(pasted);
-    rebuildIndex(); renderMyFoods();
-    load(state.date); flash("Backup restored.");
-  } catch (err) { flash(err.message, "err"); }
+  await mutate(() => store.importJSON(pasted), () => { rebuildIndex(); renderMyFoods(); load(state.date); flash("Backup restored."); });
 };
 
-renderMyFoods();
-load(state.date);
-$("#status").textContent = `${index.keys.size} foods in the database \u00b7 your log is saved on this device`;
-$("#text").focus();
+// ---- sync across devices ----------------------------------------------------
+function renderSyncStatus(error) {
+  const s = $("#syncstatus"), a = $("#synclink");
+  if (store.remote) {
+    s.textContent = error ? `Sync problem: ${error}` : "Synced across your devices";
+    s.className = error ? "err" : "";
+    a.textContent = "Turn off sync";
+  } else {
+    s.textContent = "Your log is saved on this device only";
+    s.className = "";
+    a.textContent = "Sync across devices";
+  }
+}
+
+async function connectSync() {
+  const password = prompt("Enter your sync password. Use the same one on every device.\n(It's the FOOD_TRACKER_PASSWORD you set on Vercel.)");
+  if (!password) return;
+  const remote = new RemoteStore(password);
+  try { await remote.load(); } catch (e) { flash(e.message, "err"); return; }
+  const local = store.remote ? null : store.data;
+  if (local && (local.entries.length || local.customFoods.length)) {
+    if (confirm(`Copy the ${local.entries.length} entries and ${local.customFoods.length} saved foods on this device into your synced log? (Nothing is duplicated.)`)) {
+      try { await remote.merge(local); } catch (e) { flash(e.message, "err"); return; }
+    }
+  }
+  setSyncConfig({ password });
+  location.reload();
+}
+
+$("#synclink").onclick = (e) => {
+  e.preventDefault();
+  if (!store.remote) return connectSync();
+  if (confirm("Turn off sync on this device? Your synced log stays on the server; this device goes back to its own local log.")) { clearSyncConfig(); location.reload(); }
+};
+
+// ---- boot ---------------------------------------------------------------------
+(async () => {
+  let loadError = null;
+  try { await store.load(); } catch (e) { loadError = e.message; flash(e.message, "err"); }
+  rebuildIndex();
+  renderMyFoods();
+  load(state.date);
+  renderSyncStatus(loadError);
+  $("#status").textContent = `${index.keys.size} foods in the database`;
+  $("#text").focus();
+})();

@@ -9,3 +9,6 @@ requirements.txt
 pyproject.toml
 README.md
 .github/
+*.test.mjs
+dev-server.mjs
+node_modules/

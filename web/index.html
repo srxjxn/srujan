@@ -125,6 +125,8 @@
   .day .kc { font-variant-numeric: tabular-nums; }
   footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 24px; }
   footer a { color: var(--accent); text-decoration: none; }
+  footer .sync { margin-top: 6px; }
+  footer .sync .err { color: var(--danger); }
   form.log input { font-size: 16px; } /* stops iOS zooming on focus */
 </style>
 </head>
@@ -199,7 +201,11 @@
     <div class="week" id="week"></div>
   </section>
 
-  <footer><div id="status"></div><div style="margin-top:6px"><a href="#" id="export">Copy backup</a> &middot; <a href="#" id="import">Restore backup</a></div></footer>
+  <footer>
+    <div id="status"></div>
+    <div class="sync"><span id="syncstatus"></span> &middot; <a href="#" id="synclink">Sync across devices</a></div>
+    <div style="margin-top:6px"><a href="#" id="export">Copy backup</a> &middot; <a href="#" id="import">Restore backup</a></div>
+  </footer>
 </main>
 
 <script type="module" src="app.js"></script>
