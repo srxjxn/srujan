@@ -153,3 +153,36 @@ web/                static build for Vercel (parser.js, store.js, app.js, genera
 scripts/build_foods_js.py  regenerates web/foods.js from foods.py
 vercel.json         serves web/ as a static site
 ```
+
+---
+
+# Job scraper: open roles at your target companies
+
+`job_scraper/` pulls every open role from a fixed list of companies, filters them by title and location,
+and flags what's new since the last run. It reads the public job-board APIs that the companies' own
+careers pages use (Greenhouse, Lever, Ashby, SmartRecruiters, Workday), so it needs no logins, browser,
+or extra packages. It uses only the Python 3.11+ standard library.
+
+```bash
+python -m job_scraper find "Company Name"   # which job board does it use? prints a config entry
+python -m job_scraper run                   # scrape everything in companies.toml
+python -m job_scraper run --only Stripe     # just one or a few companies
+```
+
+1. Put your companies in `companies.toml` (the examples there show each board type). If `find` can't
+   identify a company, click any job on its careers page and look at the address. `jobs.lever.co/<slug>`,
+   `job-boards.greenhouse.io/<slug>`, `jobs.ashbyhq.com/<slug>`, `jobs.smartrecruiters.com/<slug>` and
+   `<x>.wd5.myworkdayjobs.com/<site>` each tell you the board.
+2. Set the `[filters]`: title words to include and exclude, and optional locations. Terms match whole
+   words, so `intern` won't drop "Internal Tools". Any company can override the filters.
+3. Run it. Results go to `jobs_output/` (git-ignored):
+   - `report.html`: every matching role, newest first, with clickable links, search and sortable columns
+   - `jobs.csv` / `jobs.json`: the same data, for a spreadsheet
+   - `new_jobs.csv`: only roles that appeared since the last run
+   - `seen.json`: the memory behind "new"; delete it to start over
+
+The first run for a company records its current roles without marking them new. After that, each
+run flags only roles that weren't there before, so running it daily gives you a short list of fresh postings.
+
+Not covered: companies on their own in-house careers sites (Google, Amazon, Apple, Meta, Microsoft)
+or on Taleo, iCIMS and similar systems. They need per-site scraping. Tests: `python -m unittest tests.test_job_scraper`.

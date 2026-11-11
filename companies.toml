@@ -1,0 +1,55 @@
+# Target companies for `python -m job_scraper run`.
+#
+# Replace the examples below with your 20 companies. Each needs:
+#   name  - how it shows up in the report
+#   ats   - the job board it uses: greenhouse | lever | ashby | smartrecruiters | workday
+#   slug  - its id on that board (not needed for workday)
+#   url   - workday only: the careers site address, e.g. https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite
+#
+# Don't know the board? Run:  python -m job_scraper find "Company Name"
+# or click any job on the company's careers page and look at the address.
+
+[filters]
+# A title must contain at least one of these (whole words, any case). Leave empty to keep every role.
+title_include = [
+  "software engineer", "software developer", "backend", "back end", "full stack", "fullstack",
+  "frontend", "front end", "machine learning engineer", "ML engineer", "data engineer", "SWE",
+]
+# Drop titles containing any of these.
+title_exclude = ["director", "vice president", "VP", "head of"]
+# Keep only roles in these places (matched against the location text). Empty = anywhere.
+# Many boards list just "San Francisco, CA" with no country, so list cities/states too if you use this.
+locations = []
+# With `locations` set, also keep roles marked remote.
+include_remote = true
+
+# Any company can override the filters above, e.g.:
+#   title_include = ["solutions engineer"]
+#   locations = ["New York", "Remote"]
+
+# --- Examples: replace with your list ---------------------------------------
+
+[[companies]]
+name = "Anthropic"
+ats = "greenhouse"
+slug = "anthropic"
+
+[[companies]]
+name = "Stripe"
+ats = "greenhouse"
+slug = "stripe"
+
+[[companies]]
+name = "OpenAI"
+ats = "ashby"
+slug = "openai"
+
+[[companies]]
+name = "Palantir"
+ats = "lever"
+slug = "palantir"
+
+[[companies]]
+name = "NVIDIA"
+ats = "workday"
+url = "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite"
